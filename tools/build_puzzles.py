@@ -3,7 +3,8 @@
 
 If tools/picks.txt exists, it is the hand-picked order: one position id per
 line (blank lines and # comments ignored). Otherwise an automatic order is
-used: one position per game, easiest (lowest found depth) first, with the
+used: one position per game, easiest first (most often found by Maia,
+or lowest found depth without Maia), with the
 phases of the game interleaved for variety.
 
 Usage:
@@ -28,6 +29,13 @@ def phase(fen):
     return "middlegame"
 
 
+def ease(p):
+    """Higher is easier: how often Maia's humans find the move, else shallow-search depth."""
+    if p.get("maia"):
+        return sum(v["played"] for v in p["maia"].values()) / len(p["maia"])
+    return -p["foundDepth"]
+
+
 def slim(p):
     board = chess.Board()
     last = None
@@ -43,6 +51,7 @@ def slim(p):
         "best": p["best"],
         "tempting": p["tempting"],
         "foundDepth": p["foundDepth"],
+        "maia": p.get("maia"),
         "phase": phase(p["fen"]),
         "moves": {k: v["cp"] for k, v in p["moves"].items()},
         "game": p["game"],
@@ -74,7 +83,7 @@ def main():
     else:
         seen_games = set()
         pool = []
-        for p in sorted(data["positions"], key=lambda p: (p["foundDepth"], -p["secondBestGap"])):
+        for p in sorted(data["positions"], key=ease, reverse=True):
             g = p["game"]["url"]
             if g in seen_games:
                 continue

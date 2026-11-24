@@ -116,7 +116,7 @@ function show(n, push = true) {
   n = Math.max(1, Math.min(n, puzzles.length))
   number = n
   puzzle = puzzles[(n - 1) % puzzles.length]
-  state = load("day:" + n, {guesses: [], done: false})
+  state = load("p:" + puzzle.id, {guesses: [], done: false})
   if (push) {
     const url = n === todayNumber() ? location.pathname : `?n=${n}`
     history.pushState(null, "", url)
@@ -236,13 +236,13 @@ async function submit(uci) {
   const solved = g.key === "move"
   if (solved || state.guesses.length >= MAX_TRIES) {
     state.done = true
-    save("day:" + number, state)
+    save("p:" + puzzle.id, state)
     await wait(700)
     busy = false
     finish(true)
     return
   }
-  save("day:" + number, state)
+  save("p:" + puzzle.id, state)
   await wait(1100)
   resetBoard(true)
   busy = false
@@ -317,7 +317,7 @@ function finish(justNow) {
   fb.className = "feedback " + (solved ? "tier-move" : "tier-none")
 
   const temptingGraded = grade(p, p.tempting.uci)
-  const diff = difficulty(p.foundDepth)
+  const diff = difficulty(p)
   const sameAsBest = p.best.uci === p.played.uci
 
   const r = $("reveal")
@@ -330,12 +330,12 @@ function finish(justNow) {
     </div>
     <div class="card">
       <h2><span class="dot bad"></span>The tempting ${moveChip(p.tempting.san)}</h2>
-      <p>A quick search prefers it (Stockfish's favourite at depth ${rangeText(p.tempting.depths)}), but deeper down it is ${fmtEval(p.tempting.cp)}: a ${temptingGraded.label.toLowerCase()}.</p>
+      <p>${temptText(p, temptingGraded)}</p>
       <p class="line-label">Refutation</p>
       ${lineHtml(p.fen, p.tempting.line, "tempting")}
     </div>
     <div class="card meta">
-      <p><strong>Difficulty:</strong> ${diff.label} <span class="muted">(Stockfish settles on ${esc(p.played.san)} from depth ${p.foundDepth})</span></p>
+      <p><strong>Difficulty:</strong> ${diff.label} <span class="muted">(${diff.detail})</span></p>
       <p><strong>Game:</strong> ${esc(p.game.white)} (${p.game.whiteElo}) vs ${esc(p.game.black)} (${p.game.blackElo}), ${tcName(p.game.timeControl)}, ${esc(p.game.date)}. Result ${esc(p.game.result)}.
         <a href="${esc(p.game.url)}#${p.history.length}" target="_blank" rel="noopener">Open on Lichess ↗</a></p>
       <details><summary>Moves to here</summary><p class="mono">${esc(moveText(new Chess().fen(), p.history))}</p></details>
@@ -376,11 +376,32 @@ function rangeText(depths) {
   return lo === hi ? `${lo}` : `${lo}–${hi}`
 }
 
-function difficulty(d) {
-  if (d <= 6) return {label: "Gentle"}
-  if (d <= 9) return {label: "Tricky"}
-  if (d <= 12) return {label: "Hard"}
-  return {label: "Fiendish"}
+function maiaMean(p, key) {
+  const v = Object.values(p.maia)
+  return v.reduce((a, x) => a + x[key], 0) / v.length
+}
+
+const pct = (x) => `${Math.round(x * 100)}%`
+
+function temptText(p, g) {
+  const after = `but it's ${fmtEval(p.tempting.cp)} after the line below: ${g.key === "blunder" ? "a blunder" : `a ${g.label.toLowerCase()}`}.`
+  if (p.maia && p.maia["1500"]) {
+    return `Maia, a model trained to play like humans, expects ${pct(p.maia["1500"].tempting)} of 1500-rated players to play it ` +
+      `(and only ${pct(p.maia["1500"].played)} to find ${esc(p.played.san)}), ${after}`
+  }
+  return `A quick search prefers it (Stockfish's favourite at depth ${rangeText(p.tempting.depths)}), ${after}`
+}
+
+function difficulty(p) {
+  if (p.maia) {
+    const m = maiaMean(p, "played")
+    const label = m >= 0.2 ? "Gentle" : m >= 0.12 ? "Tricky" : m >= 0.06 ? "Hard" : "Fiendish"
+    const levels = Object.entries(p.maia).map(([lvl, v]) => `${pct(v.played)} at ${lvl}`).join(", ")
+    return {label, detail: `how often Maia expects humans to find ${p.played.san}: ${levels}`}
+  }
+  const d = p.foundDepth
+  const label = d <= 6 ? "Gentle" : d <= 9 ? "Tricky" : d <= 12 ? "Hard" : "Fiendish"
+  return {label, detail: `Stockfish settles on ${p.played.san} from depth ${d}`}
 }
 
 function lineHtml(fen, sans, name) {

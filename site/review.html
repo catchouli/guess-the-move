@@ -54,7 +54,8 @@
         <div class="mini"></div>
         <label><input type="checkbox"> #${i + 1} · ${side} to move · ${p.phase}</label>
         <p>Played <b>${esc(p.played.san)}</b> ${ev(p.played.cp)} · found at depth ${p.foundDepth}</p>
-        <p>Tempting <b>${esc(p.tempting.san)}</b> ${ev(p.tempting.cp)} (top at d${p.tempting.depths.join(",")})</p>
+        <p>Tempting <b>${esc(p.tempting.san)}</b> ${ev(p.tempting.cp)} ${p.maia ? "" : `(top at d${p.tempting.depths.join(",")})`}</p>
+        ${p.maia ? `<p>Maia finds / tempted: ${Object.entries(p.maia).map(([l, v]) => `${l}: ${Math.round(v.played * 100)}/${Math.round(v.tempting * 100)}%`).join(" · ")}</p>` : ""}
         <p>Legal moves ${Object.keys(p.moves).length} · ${esc(p.game.whiteElo)} vs ${esc(p.game.blackElo)} · ${esc(p.game.timeControl)}</p>
         <p><a href="index.html?n=${i + 1}">play</a> · <a href="${esc(p.game.url)}#${p.history.length}" target="_blank" rel="noopener">lichess</a> · <code>${esc(p.id)}</code></p>`
       grid.appendChild(el)

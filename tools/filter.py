@@ -50,6 +50,10 @@ UNIQUE_GAP = 40          # "no lesson" guard: next best alternative this much wo
 MIN_FOUND_DEPTH = 4      # check 2: shallow search must disagree up to here
 MAX_FOUND_DEPTH = 14     # found only deeper than this = brute force
 GRADE_DEPTH = 14
+# Maia mode (--tempting maia): human-likeness from Maia's policy, averaged
+# over the levels given (e.g. 1100, 1500, 1900).
+MAIA_MAX_PLAYED = 0.30   # humans find the game move at most this often
+MAIA_MIN_TEMPT = 0.15    # and play the tempting move at least this often
 MAX_CANDIDATES_PER_GAME = 12
 MATE_CP = 10000
 
@@ -103,6 +107,47 @@ def prefix_hashes(moves, max_ply):
 # ---------------------------------------------------------------- engine work
 
 _engine = None
+_maia = None
+MODE = "shallow"
+MAIA_WEIGHTS = []
+LC0 = os.environ.get("LC0", "lc0")
+POLICY_RE = re.compile(r"^(\S+)\s.*\(P:\s*([\d.]+)%\)")
+CASTLE_FIX = {"e1h1": "e1g1", "e1a1": "e1c1", "e8h8": "e8g8", "e8a8": "e8c8"}
+
+
+def init_worker(mode, weights):
+    global MODE, MAIA_WEIGHTS
+    MODE, MAIA_WEIGHTS = mode, weights
+
+
+def get_maia():
+    """{level: lc0 engine} running Maia nets on the CPU, one thread each."""
+    global _maia
+    if _maia is None:
+        _maia = {}
+        for path in MAIA_WEIGHTS:
+            level = re.search(r"maia-(\d+)", path).group(1)
+            eng = chess.engine.SimpleEngine.popen_uci([LC0, f"--weights={path}", "--backend=blas", "--threads=1"])
+            eng.configure({"VerboseMoveStats": True})
+            _maia[level] = eng
+    return _maia
+
+
+def maia_policy(board):
+    """{level: {uci: probability}}: how likely a player at that level is to play each move."""
+    out = {}
+    for level, eng in get_maia().items():
+        pol = {}
+        with eng.analysis(board, chess.engine.Limit(nodes=1), game=object()) as an:
+            for info in an:
+                m = POLICY_RE.match(info.get("string", ""))
+                if m and m.group(1) != "node":
+                    uci = m.group(1)
+                    if uci in CASTLE_FIX and board.piece_type_at(chess.parse_square(uci[:2])) == chess.KING:
+                        uci = CASTLE_FIX[uci]
+                    pol[uci] = float(m.group(2)) / 100
+        out[level] = pol
+    return out
 
 
 def get_engine():
@@ -222,6 +267,29 @@ def check_position(eng, board, played):
     if played not in [i["pv"][0] for i in quick if "pv" in i]:
         return "played_not_top3_quick"
 
+    # Maia: would humans find it, and is there a move they'd rather play?
+    maia = None
+    maia_tempting = None
+    if MODE == "maia":
+        pol = maia_policy(board)
+        mean = {}
+        for level_pol in pol.values():
+            for uci, pr in level_pol.items():
+                mean[uci] = mean.get(uci, 0) + pr / len(pol)
+        if mean.get(played.uci(), 0) > MAIA_MAX_PLAYED:
+            return "maia_obvious"
+        alts = {u: pr for u, pr in mean.items() if u != played.uci()}
+        if not alts:
+            return "maia_no_temptation"
+        t_uci = max(alts, key=alts.get)
+        if alts[t_uci] < MAIA_MIN_TEMPT:
+            return "maia_no_temptation"
+        maia_tempting = chess.Move.from_uci(t_uci)
+        if maia_tempting not in board.legal_moves:
+            return "maia_bad_move"
+        maia = {lvl: {"played": round(lp.get(played.uci(), 0), 3), "tempting": round(lp.get(t_uci, 0), 3),
+                      "top": max(lp, key=lp.get) if lp else None} for lvl, lp in pol.items()}
+
     # Deep scan
     lines, top_by_depth = deep_scan(board, DEEP_DEPTH)
     if len(lines) < MIN_REASONABLE:
@@ -249,18 +317,23 @@ def check_position(eng, board, played):
         if all(top_by_depth[x] == played for x in depths if x >= d):
             found_depth = d
             break
-    if found_depth is None or found_depth <= MIN_FOUND_DEPTH or found_depth > MAX_FOUND_DEPTH:
-        return "check2_obvious"
-    shallow = [top_by_depth[d] for d in depths if d < found_depth and top_by_depth[d] != played]
-    if not shallow:
-        return "check2_no_shallow"
-    # Tempting move: the shallow favourite (most often top below found_depth,
-    # ties to the deepest).
-    counts = {}
-    for d in depths:
-        if d < found_depth and top_by_depth[d] != played:
-            counts[top_by_depth[d]] = (counts.get(top_by_depth[d], (0, 0))[0] + 1, d)
-    tempting = max(counts, key=lambda m: counts[m])
+    if MODE == "maia":
+        # Humans judged non-obvious already; only rule out brute force.
+        if found_depth is None or found_depth > MAX_FOUND_DEPTH:
+            return "brute_force"
+        tempting = maia_tempting
+    else:
+        if found_depth is None or found_depth <= MIN_FOUND_DEPTH or found_depth > MAX_FOUND_DEPTH:
+            return "check2_obvious"
+        # Tempting move: the shallow favourite (most often top below
+        # found_depth, ties to the deepest).
+        counts = {}
+        for d in depths:
+            if d < found_depth and top_by_depth[d] != played:
+                counts[top_by_depth[d]] = (counts.get(top_by_depth[d], (0, 0))[0] + 1, d)
+        if not counts:
+            return "check2_no_shallow"
+        tempting = max(counts, key=lambda m: counts[m])
     # Check 3: trap
     t = next((e for e in evals if e[0] == tempting), None)
     if t is None:
@@ -275,14 +348,17 @@ def check_position(eng, board, played):
     for mv, c, _ in evals:
         if mv.uci() in graded:
             graded[mv.uci()]["cp"] = c
-    graded[tempting.uci()]["cp"] = t_cp
+    if tempting.uci() in graded:
+        graded[tempting.uci()]["cp"] = t_cp
 
     played_pv = next(e[2] for e in evals if e[0] == played)
     return {
         "played": {"uci": played.uci(), "san": board.san(played), "cp": played_cp, "line": san_line(board, played_pv)},
         "best": {"uci": evals[0][0].uci(), "san": board.san(evals[0][0]), "cp": best_cp, "line": san_line(board, evals[0][2])},
         "tempting": {"uci": tempting.uci(), "san": board.san(tempting), "cp": t_cp, "line": san_line(board, t_pv),
-                     "depths": [d for d in depths if d < found_depth and top_by_depth[d] == tempting]},
+                     "depths": [d for d in depths if d < found_depth and top_by_depth[d] == tempting],
+                     "source": MODE},
+        "maia": maia,
         "foundDepth": found_depth,
         "secondBestGap": played_cp - others[0][1],
         "reasonable": sum(1 for e in evals if e[1] >= best_cp - REASONABLE_MARGIN),
@@ -301,6 +377,9 @@ def main():
     ap.add_argument("--workers", type=int, default=max(1, (os.cpu_count() or 2) - 2))
     ap.add_argument("--offset", type=int, default=0, help="skip this many games of the shuffled list (to extend an earlier run)")
     ap.add_argument("--seed", type=int, default=1)
+    ap.add_argument("--tempting", choices=["shallow", "maia"], default="shallow",
+                    help="how to find the tempting move: shallow Stockfish, or Maia (human-like nets)")
+    ap.add_argument("--maia-weights", nargs="*", default=[], help="maia-*.pb.gz files (with --tempting maia)")
     ap.add_argument("-o", "--out", default="tools/out/candidates.json")
     args = ap.parse_args()
 
@@ -339,7 +418,9 @@ def main():
     results = []
     stats = {}
     done = 0
-    with mp.Pool(args.workers) as pool:
+    if args.tempting == "maia" and not args.maia_weights:
+        ap.error("--tempting maia needs --maia-weights")
+    with mp.Pool(args.workers, initializer=init_worker, initargs=(args.tempting, args.maia_weights)) as pool:
         for res, st in pool.imap_unordered(scan_game, tasks, chunksize=1):
             done += 1
             results.extend(res)
