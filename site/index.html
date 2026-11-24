@@ -6,6 +6,9 @@
   <title>Guess the Move</title>
   <meta name="description" content="A daily chess position from a real strong game. Find the move that was played.">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>♞</text></svg>">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;500&display=swap">
   <link rel="stylesheet" href="vendor/cm-chessboard/assets/chessboard.css">
   <link rel="stylesheet" href="vendor/cm-chessboard/assets/extensions/markers/markers.css">
   <link rel="stylesheet" href="vendor/cm-chessboard/assets/extensions/arrows/arrows.css">
@@ -13,35 +16,49 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <header class="top">
-    <h1>Guess the Move</h1>
-    <nav class="day-nav">
-      <button id="prev" class="icon-btn" aria-label="Previous puzzle">‹</button>
-      <span id="day-label">…</span>
-      <button id="next" class="icon-btn" aria-label="Next puzzle">›</button>
-    </nav>
+  <header class="header">
+    <h1 class="site-name"><a href="./">Guess the Move</a></h1>
   </header>
 
-  <main>
-    <section class="play">
-      <div class="prompt">
-        <p id="prompt-main" class="prompt-main">Loading…</p>
-        <p id="prompt-sub" class="prompt-sub"></p>
-      </div>
+  <main class="layout">
+    <div class="panel status" aria-live="polite">
+      <span id="feedback" class="feedback">Loading…</span>
+    </div>
+
+    <section class="board-col">
       <div class="board-wrap">
         <div id="board"></div>
       </div>
-      <div id="tries" class="tries" aria-live="polite"></div>
-      <p id="feedback" class="feedback" aria-live="polite"></p>
-      <p id="hint" class="hint" aria-live="polite"></p>
+      <div id="tries" class="tries"></div>
     </section>
 
-    <section id="reveal" class="reveal" hidden></section>
+    <aside class="sidebar">
+      <nav class="panel day-nav">
+        <button id="prev" class="icon-btn" aria-label="Previous puzzle">‹</button>
+        <span id="day-label">…</span>
+        <button id="next" class="icon-btn" aria-label="Next puzzle">›</button>
+      </nav>
+
+      <div class="panel to-move">
+        <svg id="to-move-piece" class="to-move-piece" viewBox="0 0 40 40" aria-hidden="true"><use href=""></use></svg>
+        <div class="to-move-text">
+          <p id="prompt-main" class="to-move-side"></p>
+          <p id="prompt-sub" class="to-move-sub"></p>
+          <p id="prompt-game" class="to-move-game"></p>
+        </div>
+      </div>
+
+      <div id="hint-panel" class="panel hint-panel" hidden>
+        <p id="hint" class="hint"></p>
+      </div>
+
+      <section id="reveal" class="reveal" hidden></section>
+    </aside>
   </main>
 
   <footer class="foot">
-    <p>Positions from the <a href="https://database.nikonoel.fr/">Lichess Elite Database</a> (CC0), graded by Stockfish.
-      Prototype: use ‹ › to browse every puzzle. <a href="review.html">Review shortlist</a></p>
+    <p>Positions from the <a href="https://database.nikonoel.fr/">Lichess Elite Database</a>, graded by Stockfish, temptations by <a href="https://maiachess.com">Maia</a>.
+      <a href="review.html">Review shortlist</a> · <a href="https://github.com/catchouli/guess-the-move">Source</a></p>
   </footer>
 
   <script type="module" src="app.js"></script>

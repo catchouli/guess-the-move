@@ -134,18 +134,19 @@ function show(n, push = true) {
   const plies = puzzle.history.length
   const lastFull = plies ? `${Math.ceil(plies / 2)}${plies % 2 ? "." : "…"}${puzzle.history[plies - 1]}` : "the start"
 
-  $("prompt-main").innerHTML = `${sideName} to play. What did <strong>${esc(player)}</strong> <span class="elo">(${elo})</span> play?`
-  $("prompt-sub").textContent = `After ${lastFull} · ${puzzle.game.white} vs ${puzzle.game.black} · ${tcName(puzzle.game.timeControl)}, ${puzzle.game.date.slice(0, 4)}`
+  $("to-move-piece").querySelector("use").setAttribute("href", `vendor/cm-chessboard/assets/pieces/standard.svg#${side === COLOR.white ? "wq" : "bq"}`)
+  $("prompt-main").textContent = `${sideName} to move`
+  $("prompt-sub").innerHTML = `What did <strong>${esc(player)}</strong> <span class="elo">(${esc(elo)})</span> play?`
+  $("prompt-game").textContent = `After ${lastFull} · ${puzzle.game.white} vs ${puzzle.game.black} · ${tcName(puzzle.game.timeControl)}, ${puzzle.game.date.slice(0, 4)}`
 
   board.setOrientation(side)
   resetBoard(false)
   renderTries()
-  $("feedback").textContent = ""
+  $("feedback").textContent = state.guesses.length ? "Have another go" : "Find the move!"
   $("feedback").className = "feedback"
-  $("hint").textContent = ""
+  setHint("")
   $("reveal").hidden = true
   $("reveal").innerHTML = ""
-  document.body.classList.remove("revealed")
 
   if (state.done) {
     finish(false)
@@ -271,7 +272,12 @@ function showHints() {
     text = `Hint: it's the ${piece} on the circled square.`
     board.addMarker(MARKER_TYPE.circlePrimary, from)
   }
+  setHint(text)
+}
+
+function setHint(text) {
   $("hint").textContent = text
+  $("hint-panel").hidden = !text
 }
 
 function renderTries() {
@@ -299,7 +305,7 @@ function renderTries() {
 
 function finish(justNow) {
   board.disableMoveInput()
-  $("hint").textContent = ""
+  setHint("")
   const p = puzzle
   const solved = state.guesses.includes(p.played.uci)
   resetBoard(justNow)
@@ -348,7 +354,6 @@ function finish(justNow) {
     <pre id="share-preview" class="share-preview">${esc(shareText())}</pre>
   `
   r.hidden = false
-  document.body.classList.add("revealed")
 
   r.querySelectorAll("[data-line]").forEach(el => {
     el.addEventListener("click", () => stepTo(el.dataset.line, parseInt(el.dataset.i, 10)))
@@ -384,7 +389,8 @@ function maiaMean(p, key) {
 const pct = (x) => `${Math.round(x * 100)}%`
 
 function temptText(p, g) {
-  const after = `but it's ${fmtEval(p.tempting.cp)} after the line below: ${g.key === "blunder" ? "a blunder" : `a ${g.label.toLowerCase()}`}.`
+  const noun = {excellent: "still a decent move", good: "an inaccuracy", mistake: "a mistake", blunder: "a blunder"}[g.key]
+  const after = `but it's ${fmtEval(p.tempting.cp)} after the line below: ${noun}.`
   if (p.maia && p.maia["1500"]) {
     return `Maia, a model trained to play like humans, expects ${pct(p.maia["1500"].tempting)} of 1500-rated players to play it ` +
       `(and only ${pct(p.maia["1500"].played)} to find ${esc(p.played.san)}), ${after}`
@@ -454,5 +460,5 @@ async function share() {
 
 main().catch(err => {
   console.error(err)
-  $("prompt-main").textContent = "Couldn't load today's puzzle."
+  $("feedback").textContent = "Couldn't load today's puzzle."
 })
