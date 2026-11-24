@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Shortlist Review</title>
+  <link rel="stylesheet" href="vendor/cm-chessboard/assets/chessboard.css">
+  <link rel="stylesheet" href="vendor/cm-chessboard/assets/extensions/arrows/arrows.css">
+  <link rel="stylesheet" href="style.css">
+  <style>
+    main { max-width: 1100px; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 14px; margin-top: 14px; }
+    .item { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 10px; font-size: 0.85rem; }
+    .item.picked { outline: 3px solid var(--t-move); }
+    .item .mini { width: 100%; margin-bottom: 6px; }
+    .item p { margin: 3px 0; }
+    .item label { display: flex; gap: 6px; align-items: center; font-weight: 600; cursor: pointer; }
+    .bar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 12px; }
+    .legend { color: var(--muted); font-size: 0.85rem; }
+    textarea { width: 100%; height: 120px; margin-top: 8px; font-family: ui-monospace, Menlo, monospace; background: var(--surface); color: var(--text); border: 1px solid var(--line); border-radius: 8px; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1 style="margin-top:14px">Shortlist review</h1>
+    <p class="legend">Every puzzle in <code>puzzles.json</code>, in play order. Green arrow: the game move. Red: the tempting move.
+      Tick the keepers (in the order you want them), then paste the list into <code>tools/picks.txt</code> and rerun <code>build_puzzles.py</code>.</p>
+    <div class="bar">
+      <button class="btn primary" id="copy">Copy picks.txt</button>
+      <button class="btn" id="clear">Clear picks</button>
+      <span id="count" class="legend"></span>
+    </div>
+    <textarea id="out" readonly></textarea>
+    <div class="grid" id="grid"></div>
+  </main>
+  <script type="module">
+    import {Chessboard, COLOR, BORDER_TYPE} from "./vendor/cm-chessboard/Chessboard.js"
+    import {Arrows, ARROW_TYPE} from "./vendor/cm-chessboard/extensions/arrows/Arrows.js"
+
+    const KEY = "gtm:review:picks"
+    let picks = []
+    try { picks = JSON.parse(localStorage.getItem(KEY) || "[]") } catch {}
+    const esc = s => String(s).replace(/[&<>"']/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[c]))
+    const ev = cp => (cp >= 0 ? "+" : "") + (cp / 100).toFixed(2)
+
+    const {puzzles} = await (await fetch("puzzles.json")).json()
+    const grid = document.getElementById("grid")
+    puzzles.forEach((p, i) => {
+      const el = document.createElement("div")
+      el.className = "item"
+      el.dataset.id = p.id
+      const side = p.fen.split(" ")[1] === "w" ? "White" : "Black"
+      el.innerHTML = `
+        <div class="mini"></div>
+        <label><input type="checkbox"> #${i + 1} · ${side} to move · ${p.phase}</label>
+        <p>Played <b>${esc(p.played.san)}</b> ${ev(p.played.cp)} · found at depth ${p.foundDepth}</p>
+        <p>Tempting <b>${esc(p.tempting.san)}</b> ${ev(p.tempting.cp)} (top at d${p.tempting.depths.join(",")})</p>
+        <p>Legal moves ${Object.keys(p.moves).length} · ${esc(p.game.whiteElo)} vs ${esc(p.game.blackElo)} · ${esc(p.game.timeControl)}</p>
+        <p><a href="index.html?n=${i + 1}">play</a> · <a href="${esc(p.game.url)}#${p.history.length}" target="_blank" rel="noopener">lichess</a> · <code>${esc(p.id)}</code></p>`
+      grid.appendChild(el)
+      const b = new Chessboard(el.querySelector(".mini"), {
+        position: p.fen, orientation: side === "White" ? COLOR.white : COLOR.black,
+        assetsUrl: "./vendor/cm-chessboard/assets/",
+        style: {cssClass: "gtm", borderType: BORDER_TYPE.none, showCoordinates: false, animationDuration: 0},
+        extensions: [{class: Arrows}],
+      })
+      b.addArrow(ARROW_TYPE.success, p.played.uci.slice(0, 2), p.played.uci.slice(2, 4))
+      b.addArrow(ARROW_TYPE.danger, p.tempting.uci.slice(0, 2), p.tempting.uci.slice(2, 4))
+      const box = el.querySelector("input")
+      box.checked = picks.includes(p.id)
+      box.onchange = () => {
+        picks = picks.filter(x => x !== p.id)
+        if (box.checked) picks.push(p.id)
+        render()
+      }
+    })
+
+    function render() {
+      try { localStorage.setItem(KEY, JSON.stringify(picks)) } catch {}
+      document.querySelectorAll(".item").forEach(el => el.classList.toggle("picked", picks.includes(el.dataset.id)))
+      document.getElementById("out").value = picks.join("\n")
+      document.getElementById("count").textContent = `${picks.length} picked of ${puzzles.length}`
+    }
+    document.getElementById("copy").onclick = () => navigator.clipboard.writeText(picks.join("\n") + "\n")
+    document.getElementById("clear").onclick = () => {
+      picks = []
+      document.querySelectorAll(".item input").forEach(b => b.checked = false)
+      render()
+    }
+    render()
+  </script>
+</body>
+</html>

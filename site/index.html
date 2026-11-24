@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Guess the Move</title>
+  <meta name="description" content="A daily chess position from a real strong game. Find the move that was played.">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>♞</text></svg>">
+  <link rel="stylesheet" href="vendor/cm-chessboard/assets/chessboard.css">
+  <link rel="stylesheet" href="vendor/cm-chessboard/assets/extensions/markers/markers.css">
+  <link rel="stylesheet" href="vendor/cm-chessboard/assets/extensions/arrows/arrows.css">
+  <link rel="stylesheet" href="vendor/cm-chessboard/assets/extensions/promotion-dialog/promotion-dialog.css">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="top">
+    <h1>Guess the Move</h1>
+    <nav class="day-nav">
+      <button id="prev" class="icon-btn" aria-label="Previous puzzle">‹</button>
+      <span id="day-label">…</span>
+      <button id="next" class="icon-btn" aria-label="Next puzzle">›</button>
+    </nav>
+  </header>
+
+  <main>
+    <section class="play">
+      <div class="prompt">
+        <p id="prompt-main" class="prompt-main">Loading…</p>
+        <p id="prompt-sub" class="prompt-sub"></p>
+      </div>
+      <div class="board-wrap">
+        <div id="board"></div>
+      </div>
+      <div id="tries" class="tries" aria-live="polite"></div>
+      <p id="feedback" class="feedback" aria-live="polite"></p>
+      <p id="hint" class="hint" aria-live="polite"></p>
+    </section>
+
+    <section id="reveal" class="reveal" hidden></section>
+  </main>
+
+  <footer class="foot">
+    <p>Positions from the <a href="https://database.nikonoel.fr/">Lichess Elite Database</a> (CC0), graded by Stockfish.
+      Prototype: use ‹ › to browse every puzzle. <a href="review.html">Review shortlist</a></p>
+  </footer>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>
